@@ -139,3 +139,39 @@ def generate_zip(df, lang, eval_type, ext):
             return None
 
     zip_buffer.seek(0)
+    return zip_buffer
+# ---------- MAIN ----------
+if uploaded:
+    try:
+        df = pd.read_excel(uploaded, engine="openpyxl")
+
+        # Basic validation: Master_code exists and is short enough
+        if "Master_code" not in df.columns:
+            st.error("❌ 'Master_code' column is required.")
+            st.stop()
+
+        df["Master_code"] = df["Master_code"].astype(str).str.strip()
+        too_long = df.loc[df["Master_code"].str.len() > 10, "Master_code"].unique().tolist()
+        if too_long:
+            st.error("❌ Some Master_code values exceed the 10-character limit. Please shorten them and re-upload.")
+            st.write("Offending codes (first 20):", too_long[:20])
+            st.stop()
+
+        # Collapse duplicates by averaging numeric columns (optional but safe)
+        if df["Master_code"].duplicated().any():
+            df = df.groupby("Master_code", as_index=False).mean(numeric_only=True)
+
+        df.set_index("Master_code", inplace=True)
+
+        # Show the button once validation passes
+        if st.button(f"Download flavour graphs ({ext.upper()})"):
+            zip_file = generate_zip(df, lang, eval_type, ext)
+            if zip_file:
+                download_placeholder.download_button(
+                    f"Click here to download ZIP file ({ext.upper()})",
+                    data=zip_file,
+                    file_name=f"{eval_type.replace(' ', '_')}_Graphs_{lang}_{ext}.zip",
+                    mime="application/zip"
+                )
+    except Exception as e:
+        st.error(f"There was an issue reading the file: {e}")
