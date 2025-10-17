@@ -44,6 +44,10 @@ st.title("Flavour Graph Generator")
 lang = st.selectbox("Select language", ["EN", "FR", "ES"])
 eval_type = st.radio("Sample type", ["Cacao Mass", "Chocolate"])
 
+# NEW: output format selector
+img_format = st.radio("Download format", ["PNG", "SVG"], horizontal=True)
+ext = "png" if img_format == "PNG" else "svg"
+
 # Downloadable template
 def generate_template():
     return pd.DataFrame(columns=EXPECTED_HEADERS)
@@ -67,7 +71,7 @@ uploaded = st.file_uploader("Upload sensory evaluation Excel (.xlsx)", type=["xl
 download_placeholder = st.empty()
 
 # ---------- GRAPH GENERATOR ----------
-def generate_zip(df, lang, eval_type):
+def generate_zip(df, lang, eval_type, ext):
     if eval_type == "Cacao Mass":
         attrs, colors, num_attrs, title_sub = CACAO_ATTRS, CACAO_COLORS, 14, "M"
     else:
@@ -111,23 +115,23 @@ def generate_zip(df, lang, eval_type):
                 ax.set_rgrids([])
                 ax.spines["polar"].set_visible(False)
 
-                # NEW: Title drawn on the outer mask axes, aligned hard-left and with no extra indentation
+                # Title on mask axes, hard-left
                 title_str = f"{TITLE_MAP[lang]}\n{code} {title_sub}"
                 txt = ax_mask.text(
-                    0.012, 0.975,                 # further left & top (figure fraction)
+                    0.012, 0.975,
                     title_str,
                     transform=ax_mask.transAxes,
                     ha="left", va="top",
                     fontsize=15, weight="bold"
                 )
-                # Outline for contrast over mask
                 txt.set_path_effects([PathEffects.withStroke(linewidth=5, foreground="w")])
 
-                # Save to in-memory PNG then into the ZIP
+                # Save to in-memory as chosen format, then into the ZIP
                 buf = io.BytesIO()
-                fig.savefig(buf, format="png", bbox_inches="tight")
+                fig.savefig(buf, format=ext, bbox_inches="tight")
                 buf.seek(0)
-                z.writestr(f"{code} - {eval_type} Graph {lang}.png", buf.read())
+                z.writestr(f"{code} - {eval_type} Graph {lang}.{ext}", buf.read())
+
                 plt.close(fig)
                 gc.collect()
         except Exception:
@@ -135,39 +139,3 @@ def generate_zip(df, lang, eval_type):
             return None
 
     zip_buffer.seek(0)
-    return zip_buffer
-
-# ---------- MAIN ----------
-if uploaded:
-    try:
-        df = pd.read_excel(uploaded, engine='openpyxl')
-
-        if list(df.columns) == EXPECTED_HEADERS:
-            # NEW: Validate Master_code length (<= 10). Also normalize to string & strip spaces first.
-            df["Master_code"] = df["Master_code"].astype(str).str.strip()
-            too_long = df.loc[df["Master_code"].str.len() > 10, "Master_code"].unique().tolist()
-            if too_long:
-                st.error("❌ Some Master_code values exceed the 10-character limit. Please shorten them and re-upload.")
-                st.write("Offending codes (first 20):", too_long[:20])
-                st.stop()
-
-            df.set_index("Master_code", inplace=True)
-
-            if st.button("Download flavour graphs"):
-                zip_file = generate_zip(df, lang, eval_type)
-                if zip_file:
-                    download_placeholder.download_button(
-                        "Click here to download ZIP file",
-                        data=zip_file,
-                        file_name=f"{eval_type.replace(' ', '_')}_Graphs_{lang}.zip",
-                        mime="application/zip"
-                    )
-        else:
-            st.error("❌ Uploaded file does not match the expected template structure.")
-            st.write("Expected headers:")
-            st.write(EXPECTED_HEADERS)
-            st.write("Uploaded file headers:")
-            st.write(list(df.columns))
-
-    except Exception as e:
-        st.error(f"There was an issue reading the file: {e}")
