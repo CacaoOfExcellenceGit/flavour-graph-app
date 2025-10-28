@@ -34,7 +34,7 @@ CACAO_COLORS = [
     '#006260', '#8DC63F', '#A97C50', '#C33D32', '#A0A368', '#BD7844',
     '#A7A9AC', '#EBAB21'
 ]
-CHOC_COLORS = CACAO_COLORS[:-3] + ['#FFC6E0'] + CACAO_COLORS[-3:]  # pink for Sweetness
+CHOC_COLORS = CACAO_COLORS[:-2] + ['#FFC6E0'] + CACAO_COLORS[-2:]  # pink for Sweetness
 
 # ---------- UI ----------
 st.set_page_config(page_title="Flavour Graph Generator", layout="centered")
