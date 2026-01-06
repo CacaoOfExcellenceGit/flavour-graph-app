@@ -77,11 +77,14 @@ def generate_zip(df, lang, eval_type, ext):
     else:
         attrs, colors, num_attrs, title_sub = CHOC_ATTRS, CHOC_COLORS, 15, "C"
 
-    try:
-        mask_img = plt.imread(f"masks/{num_attrs}-Flavour-Wheel-MASK-{lang}.png")
-    except FileNotFoundError:
-        st.error("There was an issue.")
-        return None
+    # Load the mask ONLY for raster PNGs
+    mask_img = None
+    if ext.lower() != "svg":
+        try:
+            mask_img = plt.imread(f"masks/{num_attrs}-Flavour-Wheel-MASK-{lang}.png")
+        except FileNotFoundError:
+            st.error("There was an issue.")
+            return None
 
     theta = np.radians(np.linspace(360 - 360/len(attrs), 0, len(attrs)))
     width = np.radians(360 / len(attrs))
@@ -93,44 +96,59 @@ def generate_zip(df, lang, eval_type, ext):
                 radii = [df.loc[code, col] for col in attrs]
 
                 fig = plt.figure(figsize=(FIGURE_SIZE, FIGURE_SIZE))
-                ax_mask = fig.add_axes([0, 0, 1, 1])           # background/mask axes
-                ax_mask.imshow(mask_img)
-                ax_mask.axis("off")
 
-                # Polar chart axes
-                ax = fig.add_axes([0.01, 0.01, 0.98, 0.98],
-                                  projection="polar",
-                                  theta_offset=np.radians(90),
-                                  aspect=1)
+                # --- For PNG: draw mask + title; For SVG: draw only the polar bars ---
+                if mask_img is not None:
+                    ax_mask = fig.add_axes([0, 0, 1, 1])
+                    ax_mask.imshow(mask_img)
+                    ax_mask.axis("off")
+
+                    ax = fig.add_axes([0.01, 0.01, 0.98, 0.98],
+                                      projection="polar",
+                                      theta_offset=np.radians(90),
+                                      aspect=1)
+                else:
+                    # SVG: just the polar plot, use almost full canvas
+                    ax = fig.add_axes([0.02, 0.02, 0.96, 0.96],
+                                      projection="polar",
+                                      theta_offset=np.radians(90),
+                                      aspect=1)
+
                 ax.patch.set_alpha(0)
                 ax.set_ylim(0, 10)
                 ax.set_xticks(theta)
                 ax.set_xticklabels([])
+
                 ax.bar(theta, radii, width=width, bottom=0.0, color=colors, align="edge")
 
-                # radial grid labels
-                for label in [2, 4, 6, 8, 10]:
-                    t = plt.text(0, label, str(label), ha="center", va="center", size=10)
-                    t.set_path_effects([PathEffects.withStroke(linewidth=5, foreground="w")])
-                ax.set_rgrids([])
+                # For PNG we keep the numeric ring labels; for SVG we omit ALL extra text
+                if mask_img is not None:
+                    for label in [2, 4, 6, 8, 10]:
+                        t = plt.text(0, label, str(label), ha="center", va="center", size=10)
+                        t.set_path_effects([PathEffects.withStroke(linewidth=5, foreground="w")])
+                ax.set_rgrids([])          # no default r-grid labels
                 ax.spines["polar"].set_visible(False)
 
-                # Title on mask axes, hard-left
-                title_str = f"{TITLE_MAP[lang]}\n{code} {title_sub}"
-                txt = ax_mask.text(
-                    0.012, 0.975,
-                    title_str,
-                    transform=ax_mask.transAxes,
-                    ha="left", va="top",
-                    fontsize=15, weight="bold"
-                )
-                txt.set_path_effects([PathEffects.withStroke(linewidth=5, foreground="w")])
+                # PNG-only: title text on the mask
+                if mask_img is not None:
+                    title_str = f"{TITLE_MAP[lang]}\n{code} {title_sub}"
+                    txt = fig.axes[0].text(  # ax_mask
+                        0.012, 0.975, title_str,
+                        transform=fig.axes[0].transAxes,
+                        ha="left", va="top",
+                        fontsize=15, weight="bold"
+                    )
+                    txt.set_path_effects([PathEffects.withStroke(linewidth=5, foreground="w")])
 
-                # Save to in-memory as chosen format, then into the ZIP
+                # Save
                 buf = io.BytesIO()
-                fig.savefig(buf, format=ext, bbox_inches="tight")
+                if ext.lower() == "svg":
+                    # Only polar plot, no background, true vector output
+                    fig.savefig(buf, format="svg", bbox_inches="tight", facecolor="none")
+                else:
+                    fig.savefig(buf, format="png", bbox_inches="tight")
                 buf.seek(0)
-                z.writestr(f"{code} - {eval_type} Graph {lang}.{ext}", buf.read())
+                z.writestr(f"{code} - {eval_type} Graph {lang}.{ext.lower()}", buf.read())
 
                 plt.close(fig)
                 gc.collect()
