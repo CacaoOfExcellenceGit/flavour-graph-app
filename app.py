@@ -183,10 +183,11 @@ if uploaded:
         if st.button(f"Download flavour graphs ({ext.upper()})"):
             zip_file = generate_zip(df, lang, eval_type, ext)
             if zip_file:
+                ts = time.strftime("%Y%m%d-%H%M%S")  # unique name per run
                 download_placeholder.download_button(
                     f"Click here to download ZIP file ({ext.upper()})",
                     data=zip_file,
-                    file_name=f"{eval_type.replace(' ', '_')}_Graphs_{lang}_{ext}.zip",
+                    file_name=f"{eval_type.replace(' ', '_')}_Graphs_{lang}_{ext}_{ts}.zip",
                     mime="application/zip"
                 )
     except Exception as e:
