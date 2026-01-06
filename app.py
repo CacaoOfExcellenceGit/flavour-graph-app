@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as PathEffects
 import zipfile, io, gc
+import time
 from io import BytesIO
 
 # ---------- CONSTANTS ----------
@@ -72,14 +73,16 @@ download_placeholder = st.empty()
 
 # ---------- GRAPH GENERATOR ----------
 def generate_zip(df, lang, eval_type, ext):
+    svg_mode = (ext.lower() == "svg")
+
     if eval_type == "Cacao Mass":
         attrs, colors, num_attrs, title_sub = CACAO_ATTRS, CACAO_COLORS, 14, "M"
     else:
         attrs, colors, num_attrs, title_sub = CHOC_ATTRS, CHOC_COLORS, 15, "C"
 
-    # Load the mask ONLY for raster PNGs
+    # Load mask ONLY for PNG
     mask_img = None
-    if ext.lower() != "svg":
+    if not svg_mode:
         try:
             mask_img = plt.imread(f"masks/{num_attrs}-Flavour-Wheel-MASK-{lang}.png")
         except FileNotFoundError:
@@ -94,22 +97,20 @@ def generate_zip(df, lang, eval_type, ext):
         try:
             for code in df.index:
                 radii = [df.loc[code, col] for col in attrs]
-
                 fig = plt.figure(figsize=(FIGURE_SIZE, FIGURE_SIZE))
 
-                # --- For PNG: draw mask + title; For SVG: draw only the polar bars ---
-                if mask_img is not None:
-                    ax_mask = fig.add_axes([0, 0, 1, 1])
-                    ax_mask.imshow(mask_img)
-                    ax_mask.axis("off")
-
-                    ax = fig.add_axes([0.01, 0.01, 0.98, 0.98],
+                if svg_mode:
+                    # SVG: only the polar plot, no mask, no title, no labels
+                    ax = fig.add_axes([0.02, 0.02, 0.96, 0.96],
                                       projection="polar",
                                       theta_offset=np.radians(90),
                                       aspect=1)
                 else:
-                    # SVG: just the polar plot, use almost full canvas
-                    ax = fig.add_axes([0.02, 0.02, 0.96, 0.96],
+                    # PNG: draw mask + polar on top
+                    ax_mask = fig.add_axes([0, 0, 1, 1])
+                    ax_mask.imshow(mask_img)
+                    ax_mask.axis("off")
+                    ax = fig.add_axes([0.01, 0.01, 0.98, 0.98],
                                       projection="polar",
                                       theta_offset=np.radians(90),
                                       aspect=1)
@@ -118,21 +119,20 @@ def generate_zip(df, lang, eval_type, ext):
                 ax.set_ylim(0, 10)
                 ax.set_xticks(theta)
                 ax.set_xticklabels([])
+                ax.grid(False)              # no grid lines
+                ax.set_rgrids([])           # no radial grid labels
+                ax.spines["polar"].set_visible(False)
 
                 ax.bar(theta, radii, width=width, bottom=0.0, color=colors, align="edge")
 
-                # For PNG we keep the numeric ring labels; for SVG we omit ALL extra text
-                if mask_img is not None:
+                if not svg_mode:
+                    # ring numbers
                     for label in [2, 4, 6, 8, 10]:
                         t = plt.text(0, label, str(label), ha="center", va="center", size=10)
                         t.set_path_effects([PathEffects.withStroke(linewidth=5, foreground="w")])
-                ax.set_rgrids([])          # no default r-grid labels
-                ax.spines["polar"].set_visible(False)
-
-                # PNG-only: title text on the mask
-                if mask_img is not None:
+                    # title on mask
                     title_str = f"{TITLE_MAP[lang]}\n{code} {title_sub}"
-                    txt = fig.axes[0].text(  # ax_mask
+                    txt = fig.axes[0].text(
                         0.012, 0.975, title_str,
                         transform=fig.axes[0].transAxes,
                         ha="left", va="top",
@@ -140,10 +140,8 @@ def generate_zip(df, lang, eval_type, ext):
                     )
                     txt.set_path_effects([PathEffects.withStroke(linewidth=5, foreground="w")])
 
-                # Save
                 buf = io.BytesIO()
-                if ext.lower() == "svg":
-                    # Only polar plot, no background, true vector output
+                if svg_mode:
                     fig.savefig(buf, format="svg", bbox_inches="tight", facecolor="none")
                 else:
                     fig.savefig(buf, format="png", bbox_inches="tight")
