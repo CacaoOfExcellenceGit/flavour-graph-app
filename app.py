@@ -110,7 +110,7 @@ def generate_zip(df, lang, eval_type, ext):
                     ax_mask = fig.add_axes([0, 0, 1, 1])
                     ax_mask.imshow(mask_img)
                     ax_mask.axis("off")
-                    ax = fig.add_axes([0.01, 0.01, 0.98, 0.98],
+                    ax = fig.add_axes([0.02, 0.02, 0.96, 0.96],
                                       projection="polar",
                                       theta_offset=np.radians(90),
                                       aspect=1)
