@@ -46,7 +46,7 @@ lang = st.selectbox("Select language", ["EN", "FR", "ES"])
 eval_type = st.radio("Sample type", ["Cacao Mass", "Chocolate"])
 
 # NEW: output format selector
-img_format = st.radio("Download format", ["PNG", "SVG"], horizontal=True)
+img_format = st.radio("Download format", ["PNG", "SVG - No mask"], horizontal=True)
 ext = "png" if img_format == "PNG" else "svg"
 
 # Downloadable template
@@ -144,7 +144,7 @@ def generate_zip(df, lang, eval_type, ext):
                 if svg_mode:
                     fig.savefig(buf, format="svg", bbox_inches="tight", facecolor="none")
                 else:
-                    fig.savefig(buf, format="png", bbox_inches="tight")
+                    fig.savefig(buf, format="png", bbox_inches="tight", dpi=400)
                 buf.seek(0)
                 z.writestr(f"{code} - {eval_type} Graph {lang}.{ext.lower()}", buf.read())
 
