@@ -5,11 +5,13 @@ import matplotlib.pyplot as plt
 import matplotlib.patheffects as PathEffects
 import zipfile, io, gc
 import time
+import cairosvg
+from PIL import Image
 from io import BytesIO
 
 # ---------- CONSTANTS ----------
 FIGURE_SIZE = 7.5
-EDITION = "2023"
+PNG_DPI = 300  # higher quality PNG export
 TITLE_MAP = {"EN": "Sample Code", "FR": "Echantillon", "ES": "Muestra"}
 
 EXPECTED_HEADERS = [
@@ -35,7 +37,7 @@ CACAO_COLORS = [
     '#006260', '#8DC63F', '#A97C50', '#C33D32', '#A0A368', '#BD7844',
     '#A7A9AC', '#EBAB21'
 ]
-CHOC_COLORS = CACAO_COLORS[:-2] + ['#FFC6E0'] + CACAO_COLORS[-2:]  # pink for Sweetness
+CHOC_COLORS = CACAO_COLORS[:-2] + ['#FFC6E0'] + CACAO_COLORS[-2:]
 
 # ---------- UI ----------
 st.set_page_config(page_title="Flavour Graph Generator", layout="centered")
@@ -44,12 +46,9 @@ st.title("Flavour Graph Generator")
 
 lang = st.selectbox("Select language", ["EN", "FR", "ES"])
 eval_type = st.radio("Sample type", ["Cacao Mass", "Chocolate"])
-
-# NEW: output format selector
 img_format = st.radio("Download format", ["PNG", "SVG"], horizontal=True)
 ext = "png" if img_format == "PNG" else "svg"
 
-# Downloadable template
 def generate_template():
     return pd.DataFrame(columns=EXPECTED_HEADERS)
 
@@ -71,6 +70,15 @@ st.download_button(
 uploaded = st.file_uploader("Upload sensory evaluation Excel (.xlsx)", type=["xlsx", "xlsm"])
 download_placeholder = st.empty()
 
+# ---------- HELPERS ----------
+def load_svg_mask_as_image(svg_path, scale=2):
+    """
+    Convert an SVG mask to a PNG image in memory, then open it with PIL.
+    Used for PNG export only.
+    """
+    png_bytes = cairosvg.svg2png(url=svg_path, scale=scale)
+    return Image.open(BytesIO(png_bytes))
+
 # ---------- GRAPH GENERATOR ----------
 def generate_zip(df, lang, eval_type, ext):
     svg_mode = (ext.lower() == "svg")
@@ -80,16 +88,17 @@ def generate_zip(df, lang, eval_type, ext):
     else:
         attrs, colors, num_attrs, title_sub = CHOC_ATTRS, CHOC_COLORS, 15, "C"
 
-    # Load mask ONLY for PNG
+    # For PNG only: load SVG mask and render to image
     mask_img = None
     if not svg_mode:
         try:
-            mask_img = plt.imread(f"masks/{num_attrs}-Flavour-Wheel-MASK-{lang}.png")
-        except FileNotFoundError:
+            mask_path = f"masks/{num_attrs}-Flavour-Wheel-MASK-{lang}.svg"
+            mask_img = load_svg_mask_as_image(mask_path, scale=3)
+        except Exception:
             st.error("There was an issue.")
             return None
 
-    theta = np.radians(np.linspace(360 - 360/len(attrs), 0, len(attrs)))
+    theta = np.radians(np.linspace(360 - 360 / len(attrs), 0, len(attrs)))
     width = np.radians(360 / len(attrs))
 
     zip_buffer = io.BytesIO()
@@ -100,37 +109,42 @@ def generate_zip(df, lang, eval_type, ext):
                 fig = plt.figure(figsize=(FIGURE_SIZE, FIGURE_SIZE))
 
                 if svg_mode:
-                    # SVG: only the polar plot, no mask, no title, no labels
-                    ax = fig.add_axes([0.02, 0.02, 0.96, 0.96],
-                                      projection="polar",
-                                      theta_offset=np.radians(90),
-                                      aspect=1)
+                    # SVG export: clean vector polar chart only
+                    ax = fig.add_axes(
+                        [0.02, 0.02, 0.96, 0.96],
+                        projection="polar",
+                        theta_offset=np.radians(90),
+                        aspect=1
+                    )
                 else:
-                    # PNG: draw mask + polar on top
+                    # PNG export: SVG mask rendered as high-quality raster background
                     ax_mask = fig.add_axes([0, 0, 1, 1])
                     ax_mask.imshow(mask_img)
                     ax_mask.axis("off")
-                    ax = fig.add_axes([0.01, 0.01, 0.98, 0.98],
-                                      projection="polar",
-                                      theta_offset=np.radians(90),
-                                      aspect=1)
+
+                    ax = fig.add_axes(
+                        [0.01, 0.01, 0.98, 0.98],
+                        projection="polar",
+                        theta_offset=np.radians(90),
+                        aspect=1
+                    )
 
                 ax.patch.set_alpha(0)
                 ax.set_ylim(0, 10)
                 ax.set_xticks(theta)
                 ax.set_xticklabels([])
-                ax.grid(False)              # no grid lines
-                ax.set_rgrids([])           # no radial grid labels
+                ax.grid(False)
+                ax.set_rgrids([])
                 ax.spines["polar"].set_visible(False)
 
                 ax.bar(theta, radii, width=width, bottom=0.0, color=colors, align="edge")
 
                 if not svg_mode:
-                    # ring numbers
+                    # PNG only: ring labels + title
                     for label in [2, 4, 6, 8, 10]:
                         t = plt.text(0, label, str(label), ha="center", va="center", size=10)
                         t.set_path_effects([PathEffects.withStroke(linewidth=5, foreground="w")])
-                    # title on mask
+
                     title_str = f"{TITLE_MAP[lang]}\n{code} {title_sub}"
                     txt = fig.axes[0].text(
                         0.012, 0.975, title_str,
@@ -142,26 +156,38 @@ def generate_zip(df, lang, eval_type, ext):
 
                 buf = io.BytesIO()
                 if svg_mode:
-                    fig.savefig(buf, format="svg", bbox_inches="tight", facecolor="none")
+                    fig.savefig(
+                        buf,
+                        format="svg",
+                        bbox_inches="tight",
+                        facecolor="none"
+                    )
                 else:
-                    fig.savefig(buf, format="png", bbox_inches="tight")
+                    fig.savefig(
+                        buf,
+                        format="png",
+                        bbox_inches="tight",
+                        dpi=PNG_DPI
+                    )
+
                 buf.seek(0)
                 z.writestr(f"{code} - {eval_type} Graph {lang}.{ext.lower()}", buf.read())
 
                 plt.close(fig)
                 gc.collect()
+
         except Exception:
             st.error("There was an issue.")
             return None
 
     zip_buffer.seek(0)
     return zip_buffer
+
 # ---------- MAIN ----------
 if uploaded:
     try:
         df = pd.read_excel(uploaded, engine="openpyxl")
 
-        # Basic validation: Master_code exists and is short enough
         if "Master_code" not in df.columns:
             st.error("❌ 'Master_code' column is required.")
             st.stop()
@@ -173,22 +199,21 @@ if uploaded:
             st.write("Offending codes (first 20):", too_long[:20])
             st.stop()
 
-        # Collapse duplicates by averaging numeric columns (optional but safe)
         if df["Master_code"].duplicated().any():
             df = df.groupby("Master_code", as_index=False).mean(numeric_only=True)
 
         df.set_index("Master_code", inplace=True)
 
-        # Show the button once validation passes
         if st.button(f"Download flavour graphs ({ext.upper()})"):
             zip_file = generate_zip(df, lang, eval_type, ext)
             if zip_file:
-                ts = time.strftime("%Y%m%d-%H%M%S")  # unique name per run
+                ts = time.strftime("%Y%m%d-%H%M%S")
                 download_placeholder.download_button(
                     f"Click here to download ZIP file ({ext.upper()})",
                     data=zip_file,
                     file_name=f"{eval_type.replace(' ', '_')}_Graphs_{lang}_{ext}_{ts}.zip",
                     mime="application/zip"
                 )
+
     except Exception as e:
         st.error(f"There was an issue reading the file: {e}")
