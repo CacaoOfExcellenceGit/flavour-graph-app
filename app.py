@@ -10,12 +10,6 @@ from io import BytesIO
 # ---------- CONSTANTS ----------
 FIGURE_SIZE = 7.5
 EDITION = "2023"
-TITLE_MAP = {
-    "EN": "Sample Code",
-    "FR": "Echantillon",
-    "ES": "Muestra",
-    "IT": "Campione"
-}
 
 EXPECTED_HEADERS = [
     "Master_code", "Global_Quality", "Cacao", "Acid_Total", "Acid_Fr", "Acid_Ac", "Acid_Lac", "Acid_MB",
@@ -40,7 +34,7 @@ CACAO_COLORS = [
     '#006260', '#8DC63F', '#A97C50', '#C33D32', '#A0A368', '#BD7844',
     '#A7A9AC', '#EBAB21'
 ]
-CHOC_COLORS = CACAO_COLORS[:-2] + ['#FFC6E0'] + CACAO_COLORS[-2:]  # pink for Sweetness
+CHOC_COLORS = CACAO_COLORS[:-2] + ['#FFC6E0'] + CACAO_COLORS[-2:]
 
 # ---------- UI ----------
 st.set_page_config(page_title="Flavour Graph Generator", layout="centered")
@@ -50,11 +44,9 @@ st.title("Flavour Graph Generator")
 lang = st.selectbox("Select language", ["EN", "FR", "ES", "IT"])
 eval_type = st.radio("Sample type", ["Cacao Mass", "Chocolate"])
 
-# NEW: output format selector
 img_format = st.radio("Download format", ["PNG", "SVG - No mask"], horizontal=True)
 ext = "png" if img_format == "PNG" else "svg"
 
-# Downloadable template
 def generate_template():
     return pd.DataFrame(columns=EXPECTED_HEADERS)
 
@@ -81,11 +73,10 @@ def generate_zip(df, lang, eval_type, ext):
     svg_mode = (ext.lower() == "svg")
 
     if eval_type == "Cacao Mass":
-        attrs, colors, num_attrs, title_sub = CACAO_ATTRS, CACAO_COLORS, 14, "M"
+        attrs, colors, num_attrs = CACAO_ATTRS, CACAO_COLORS, 14
     else:
-        attrs, colors, num_attrs, title_sub = CHOC_ATTRS, CHOC_COLORS, 15, "C"
+        attrs, colors, num_attrs = CHOC_ATTRS, CHOC_COLORS, 15
 
-    # Load mask ONLY for PNG
     mask_img = None
     if not svg_mode:
         try:
@@ -105,13 +96,11 @@ def generate_zip(df, lang, eval_type, ext):
                 fig = plt.figure(figsize=(FIGURE_SIZE, FIGURE_SIZE))
 
                 if svg_mode:
-                    # SVG: only the polar plot, no mask, no title, no labels
                     ax = fig.add_axes([0.02, 0.02, 0.96, 0.96],
                                       projection="polar",
                                       theta_offset=np.radians(90),
                                       aspect=1)
                 else:
-                    # PNG: draw mask + polar on top
                     ax_mask = fig.add_axes([0, 0, 1, 1])
                     ax_mask.imshow(mask_img)
                     ax_mask.axis("off")
@@ -134,15 +123,6 @@ def generate_zip(df, lang, eval_type, ext):
                     for label in [2, 4, 6, 8, 10]:
                         t = plt.text(0, label, str(label), ha="center", va="center", size=10)
                         t.set_path_effects([PathEffects.withStroke(linewidth=5, foreground="w")])
-
-                    title_str = f"{TITLE_MAP[lang]}\n{code} {title_sub}"
-                    txt = fig.axes[0].text(
-                        0.012, 0.975, title_str,
-                        transform=fig.axes[0].transAxes,
-                        ha="left", va="top",
-                        fontsize=15, weight="bold"
-                    )
-                    txt.set_path_effects([PathEffects.withStroke(linewidth=5, foreground="w")])
 
                 buf = io.BytesIO()
                 if svg_mode:
