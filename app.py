@@ -10,7 +10,12 @@ from io import BytesIO
 # ---------- CONSTANTS ----------
 FIGURE_SIZE = 7.5
 EDITION = "2023"
-TITLE_MAP = {"EN": "Sample Code", "FR": "Echantillon", "ES": "Muestra"}
+TITLE_MAP = {
+    "EN": "Sample Code",
+    "FR": "Echantillon",
+    "ES": "Muestra",
+    "IT": "Campione"
+}
 
 EXPECTED_HEADERS = [
     "Master_code", "Global_Quality", "Cacao", "Acid_Total", "Acid_Fr", "Acid_Ac", "Acid_Lac", "Acid_MB",
@@ -42,7 +47,7 @@ st.set_page_config(page_title="Flavour Graph Generator", layout="centered")
 st.image("masks/logo.png", width=120)
 st.title("Flavour Graph Generator")
 
-lang = st.selectbox("Select language", ["EN", "FR", "ES"])
+lang = st.selectbox("Select language", ["EN", "FR", "ES", "IT"])
 eval_type = st.radio("Sample type", ["Cacao Mass", "Chocolate"])
 
 # NEW: output format selector
@@ -119,18 +124,17 @@ def generate_zip(df, lang, eval_type, ext):
                 ax.set_ylim(0, 10)
                 ax.set_xticks(theta)
                 ax.set_xticklabels([])
-                ax.grid(False)              # no grid lines
-                ax.set_rgrids([])           # no radial grid labels
+                ax.grid(False)
+                ax.set_rgrids([])
                 ax.spines["polar"].set_visible(False)
 
                 ax.bar(theta, radii, width=width, bottom=0.0, color=colors, align="edge")
 
                 if not svg_mode:
-                    # ring numbers
                     for label in [2, 4, 6, 8, 10]:
                         t = plt.text(0, label, str(label), ha="center", va="center", size=10)
                         t.set_path_effects([PathEffects.withStroke(linewidth=5, foreground="w")])
-                    # title on mask
+
                     title_str = f"{TITLE_MAP[lang]}\n{code} {title_sub}"
                     txt = fig.axes[0].text(
                         0.012, 0.975, title_str,
@@ -156,12 +160,12 @@ def generate_zip(df, lang, eval_type, ext):
 
     zip_buffer.seek(0)
     return zip_buffer
+
 # ---------- MAIN ----------
 if uploaded:
     try:
         df = pd.read_excel(uploaded, engine="openpyxl")
 
-        # Basic validation: Master_code exists and is short enough
         if "Master_code" not in df.columns:
             st.error("❌ 'Master_code' column is required.")
             st.stop()
@@ -173,17 +177,15 @@ if uploaded:
             st.write("Offending codes (first 20):", too_long[:20])
             st.stop()
 
-        # Collapse duplicates by averaging numeric columns (optional but safe)
         if df["Master_code"].duplicated().any():
             df = df.groupby("Master_code", as_index=False).mean(numeric_only=True)
 
         df.set_index("Master_code", inplace=True)
 
-        # Show the button once validation passes
         if st.button(f"Download flavour graphs ({ext.upper()})"):
             zip_file = generate_zip(df, lang, eval_type, ext)
             if zip_file:
-                ts = time.strftime("%Y%m%d-%H%M%S")  # unique name per run
+                ts = time.strftime("%Y%m%d-%H%M%S")
                 download_placeholder.download_button(
                     f"Click here to download ZIP file ({ext.upper()})",
                     data=zip_file,
